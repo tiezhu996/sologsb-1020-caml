@@ -63,28 +63,54 @@ export function scorePair(left: ArchiveRecord, right: ArchiveRecord) {
   return { score: Math.min(1, score), fieldScores, reasons };
 }
 
-export function computeMatches(records: ArchiveRecord[]): MatchCandidate[] {
-  const left = records.filter((record) => record.group === 'A');
-  const right = records.filter((record) => record.group === 'B');
-  const matches: MatchCandidate[] = [];
+export function computeMatches(records: ArchiveRecord[], previous: MatchCandidate[] = []): MatchCandidate[] {
+  const pairKey = (leftId: string, rightId: string) => `${leftId}|${rightId}`;
+
+  // 已有结论（确认 / 忽略 / 合并）的匹配原样保留，重新匹配不改变其状态
+  const concluded = previous.filter((match) => match.status !== 'suggested');
+  const concludedPairs = new Set(concluded.map((match) => pairKey(match.leftId, match.rightId)));
+
+  // 已确认或已合并的记录视为已占用，不再参与新一轮配对
+  const locked = new Set<string>();
+  concluded.forEach((match) => {
+    if (match.status === 'confirmed' || match.status === 'merged') {
+      locked.add(match.leftId);
+      locked.add(match.rightId);
+    }
+  });
+
+  const left = records.filter((record) => record.group === 'A' && !locked.has(record.id));
+  const right = records.filter((record) => record.group === 'B' && !locked.has(record.id));
+  const pool: Array<{ leftId: string; rightId: string; score: number; fieldScores: Record<FieldKey, number>; reasons: string[] }> = [];
   left.forEach((a) => {
-    const candidates = right.map((b) => ({ record: b, ...scorePair(a, b) }))
-      .filter((item) => item.score >= .38)
-      .sort((x, y) => y.score - x.score)
-      .slice(0, 4);
-    candidates.forEach((candidate) => {
-      matches.push({
-        id: `match-${a.id}-${candidate.record.id}`,
-        leftId: a.id,
-        rightId: candidate.record.id,
-        score: candidate.score,
-        fieldScores: candidate.fieldScores,
-        status: 'suggested',
-        reasons: candidate.reasons
-      });
+    right.forEach((b) => {
+      if (concludedPairs.has(pairKey(a.id, b.id))) return;
+      const scored = scorePair(a, b);
+      if (scored.score >= .38) pool.push({ leftId: a.id, rightId: b.id, ...scored });
     });
   });
-  return matches.sort((a, b) => b.score - a.score);
+
+  // 按分数从高到低一对一贪心配对，每份记录只出现在一条候选里
+  pool.sort((x, y) => y.score - x.score);
+  const usedLeft = new Set<string>();
+  const usedRight = new Set<string>();
+  const fresh: MatchCandidate[] = [];
+  pool.forEach((candidate) => {
+    if (usedLeft.has(candidate.leftId) || usedRight.has(candidate.rightId)) return;
+    usedLeft.add(candidate.leftId);
+    usedRight.add(candidate.rightId);
+    fresh.push({
+      id: `match-${candidate.leftId}-${candidate.rightId}`,
+      leftId: candidate.leftId,
+      rightId: candidate.rightId,
+      score: candidate.score,
+      fieldScores: candidate.fieldScores,
+      status: 'suggested',
+      reasons: candidate.reasons
+    });
+  });
+
+  return [...concluded, ...fresh].sort((a, b) => b.score - a.score);
 }
 
 export function fieldValue(record: ArchiveRecord, field: FieldKey): string {

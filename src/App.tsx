@@ -243,7 +243,7 @@ export default component$(() => {
       };
       state.records.push(record);
     });
-    state.matches = computeMatches(state.records);
+    state.matches = computeMatches(state.records, state.matches);
     commit('导入档案记录', `从 ${importGroup.value} 组导入 ${rows.length} 条记录`, []);
     importRaw.value = '';
     importText.value = '';
@@ -342,6 +342,9 @@ export default component$(() => {
           <div><strong>{state.records.filter((record) => record.group === 'A').length}</strong><span>A 组记录</span></div>
           <div><strong>{state.records.filter((record) => record.group === 'B').length}</strong><span>B 组记录</span></div>
           <div><strong>{state.matches.filter((match) => match.status === 'suggested').length}</strong><span>待复核匹配</span></div>
+          <div><strong>{state.matches.filter((match) => match.status === 'confirmed').length}</strong><span>已确认</span></div>
+          <div><strong>{state.matches.filter((match) => match.status === 'rejected').length}</strong><span>已忽略</span></div>
+          <div><strong>{state.matches.filter((match) => match.status === 'merged').length}</strong><span>已合并</span></div>
           <div class="danger"><strong>{conflictCount.value}</strong><span>低分可疑项</span></div>
         </div>
       </div>
