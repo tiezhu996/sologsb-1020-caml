@@ -63,28 +63,72 @@ export function scorePair(left: ArchiveRecord, right: ArchiveRecord) {
   return { score: Math.min(1, score), fieldScores, reasons };
 }
 
-export function computeMatches(records: ArchiveRecord[]): MatchCandidate[] {
+interface ScoredPair {
+  leftId: string;
+  rightId: string;
+  score: number;
+  fieldScores: Record<FieldKey, number>;
+  reasons: string[];
+}
+
+const pairKey = (leftId: string, rightId: string) => `${leftId}::${rightId}`;
+
+const scoreAllPairs = (records: ArchiveRecord[], skip: (leftId: string, rightId: string) => boolean): ScoredPair[] => {
   const left = records.filter((record) => record.group === 'A');
   const right = records.filter((record) => record.group === 'B');
-  const matches: MatchCandidate[] = [];
+  const pairs: ScoredPair[] = [];
   left.forEach((a) => {
-    const candidates = right.map((b) => ({ record: b, ...scorePair(a, b) }))
-      .filter((item) => item.score >= .38)
-      .sort((x, y) => y.score - x.score)
-      .slice(0, 4);
-    candidates.forEach((candidate) => {
-      matches.push({
-        id: `match-${a.id}-${candidate.record.id}`,
-        leftId: a.id,
-        rightId: candidate.record.id,
-        score: candidate.score,
-        fieldScores: candidate.fieldScores,
-        status: 'suggested',
-        reasons: candidate.reasons
-      });
+    right.forEach((b) => {
+      if (skip(a.id, b.id)) return;
+      const scored = scorePair(a, b);
+      if (scored.score >= .38) pairs.push({ leftId: a.id, rightId: b.id, ...scored });
     });
   });
-  return matches.sort((a, b) => b.score - a.score);
+  return pairs;
+};
+
+// 按分数从高到低贪心配对，一份记录只进入一条候选
+const assignOneToOne = (pairs: ScoredPair[]): ScoredPair[] => {
+  const usedLeft = new Set<string>();
+  const usedRight = new Set<string>();
+  return [...pairs].sort((x, y) => y.score - x.score).filter((pair) => {
+    if (usedLeft.has(pair.leftId) || usedRight.has(pair.rightId)) return false;
+    usedLeft.add(pair.leftId);
+    usedRight.add(pair.rightId);
+    return true;
+  });
+};
+
+const toCandidate = (pair: ScoredPair): MatchCandidate => ({
+  id: `match-${pair.leftId}-${pair.rightId}`,
+  leftId: pair.leftId,
+  rightId: pair.rightId,
+  score: pair.score,
+  fieldScores: pair.fieldScores,
+  status: 'suggested',
+  reasons: pair.reasons
+});
+
+export function computeMatches(records: ArchiveRecord[]): MatchCandidate[] {
+  return rematch(records, []);
+}
+
+export function rematch(records: ArchiveRecord[], previous: MatchCandidate[]): MatchCandidate[] {
+  // 已有结论（确认 / 忽略 / 合并）的记录对原样保留，重新匹配后状态不变
+  const decided = previous.filter((match) => match.status !== 'suggested');
+  const decidedKeys = new Set(decided.map((match) => pairKey(match.leftId, match.rightId)));
+  // 已确认、已合并的记录不再参与新的配对；已忽略的只是这一对不成立，记录仍可与其他记录配对
+  const lockedIds = new Set<string>();
+  decided.forEach((match) => {
+    if (match.status === 'confirmed' || match.status === 'merged') {
+      lockedIds.add(match.leftId);
+      lockedIds.add(match.rightId);
+    }
+  });
+  const pairs = scoreAllPairs(records, (leftId, rightId) =>
+    lockedIds.has(leftId) || lockedIds.has(rightId) || decidedKeys.has(pairKey(leftId, rightId)));
+  const suggested = assignOneToOne(pairs).map(toCandidate);
+  return [...suggested, ...decided].sort((a, b) => b.score - a.score);
 }
 
 export function fieldValue(record: ArchiveRecord, field: FieldKey): string {

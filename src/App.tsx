@@ -3,7 +3,7 @@ import {
 } from '@builder.io/qwik';
 import { Checkbox, Modal, Tabs } from '@qwik-ui/headless';
 import type { ArchiveRecord, ArchiveState, FieldKey, MatchCandidate, RecordGroup } from './types';
-import { computeMatches, fieldValue, scorePair } from './utils/matching';
+import { fieldValue, rematch, scorePair } from './utils/matching';
 import { seedState } from './data/seed';
 
 const STORAGE_KEY = 'sologsb-1020-archive-state-v1';
@@ -180,7 +180,7 @@ export default component$(() => {
     state.records = [...state.records.filter((record) => record.id !== left.id && record.id !== right.id), merged];
     state.matches.forEach((item) => {
       if (item.id === match.id) item.status = 'merged';
-      else if (item.leftId === left.id || item.rightId === right.id || item.leftId === right.id || item.rightId === left.id) item.status = 'rejected';
+      else if (item.status === 'suggested' && (item.leftId === left.id || item.rightId === right.id || item.leftId === right.id || item.rightId === left.id)) item.status = 'rejected';
     });
     state.merges.unshift({
       id: crypto.randomUUID(),
@@ -243,7 +243,7 @@ export default component$(() => {
       };
       state.records.push(record);
     });
-    state.matches = computeMatches(state.records);
+    state.matches = rematch(state.records, state.matches);
     commit('导入档案记录', `从 ${importGroup.value} 组导入 ${rows.length} 条记录`, []);
     importRaw.value = '';
     importText.value = '';
@@ -342,6 +342,9 @@ export default component$(() => {
           <div><strong>{state.records.filter((record) => record.group === 'A').length}</strong><span>A 组记录</span></div>
           <div><strong>{state.records.filter((record) => record.group === 'B').length}</strong><span>B 组记录</span></div>
           <div><strong>{state.matches.filter((match) => match.status === 'suggested').length}</strong><span>待复核匹配</span></div>
+          <div class="ok"><strong>{state.matches.filter((match) => match.status === 'confirmed').length}</strong><span>已确认</span></div>
+          <div class="ignored"><strong>{state.matches.filter((match) => match.status === 'rejected').length}</strong><span>已忽略</span></div>
+          <div class="merged"><strong>{state.matches.filter((match) => match.status === 'merged').length}</strong><span>已合并</span></div>
           <div class="danger"><strong>{conflictCount.value}</strong><span>低分可疑项</span></div>
         </div>
       </div>
@@ -468,7 +471,9 @@ export default component$(() => {
           <p>标题、日期、人物、地点和编号按权重综合评分。低于 68% 的候选会以红色标记，但系统不会替研究者自动决定。</p>
           <div class="rule-row"><span>1</span><p>每个字段保留 A / B 来源，可在合并窗口中单独选择或拼接。</p></div>
           <div class="rule-row"><span>2</span><p>原始记录、合并结果和忽略理由都进入本地审计轨迹。</p></div>
-          <div class="rule-row"><span>3</span><p>记录列表使用分批窗口渲染，导入大量数据时仍只挂载当前窗口。</p></div>
+          <div class="rule-row"><span>3</span><p>已确认、已忽略、已合并的匹配在导入新批次后保持原状态，不会回到待复核。</p></div>
+          <div class="rule-row"><span>4</span><p>候选按分数从高到低一对一配对，一份记录只出现在一条待复核候选中。</p></div>
+          <div class="rule-row"><span>5</span><p>记录列表使用分批窗口渲染，导入大量数据时仍只挂载当前窗口。</p></div>
         </article>
       </section>
 

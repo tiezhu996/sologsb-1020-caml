@@ -34,6 +34,9 @@ button:disabled { opacity: .42; cursor: not-allowed; }
 .metrics strong { display: block; font-family: "Songti SC", serif; font-size: 23px; color: var(--navy-2); }
 .metrics span { color: var(--muted); font-size: 10px; }
 .metrics .danger strong { color: var(--red); }
+.metrics .ok strong { color: #2e8b6a; }
+.metrics .ignored strong { color: var(--muted); }
+.metrics .merged strong { color: var(--cyan); }
 .desk-grid { display: grid; grid-template-columns: minmax(360px, 1.05fr) minmax(410px, 1.25fr) minmax(330px, .9fr); gap: 14px; padding: 0 18px; }
 .panel { border: 1px solid rgba(27, 64, 77, .12); border-radius: 12px; background: rgba(251,252,251,.96); box-shadow: 0 14px 34px rgba(31, 52, 60, .07); overflow: hidden; }
 .desk-grid > .panel { height: calc(100vh - 178px); min-height: 660px; display: flex; flex-direction: column; }
